@@ -230,6 +230,7 @@ void AutomixerEditor::styleBar (juce::Slider& sl, const juce::String& paramId)
     // to reset. Easier in a host window than knobs.
     sl.setSliderStyle (juce::Slider::LinearBar);
     sl.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 0, 0);
+    sl.setTextBoxIsEditable (false); // a click on the bar must drag, never open a number field
     sl.setColour (juce::Slider::trackColourId, kAccent.withAlpha (0.55f));
     sl.setColour (juce::Slider::backgroundColourId, kPanel);
     sl.setColour (juce::Slider::textBoxTextColourId, kText);
