@@ -29,6 +29,9 @@ public:
 
 private:
     void timerCallback() override;
+    void refreshPresetList();
+    void showSaveRow (bool show);
+    void styleBar (juce::Slider&, const juce::String& paramId);
 
     struct Knob
     {
@@ -47,6 +50,19 @@ private:
     GroupMeters meters;
     juce::String meterSignature;
     std::array<Knob, 7> knobs;
+
+    // Amount macro: gentle <-> aggressive, drives the detail controls.
+    Knob amount;
+    juce::Label gentleLabel, aggressiveLabel, detailsLabel;
+
+    // Presets and reset.
+    juce::ComboBox presetBox;
+    juce::TextButton saveButton { "Save..." }, deleteButton { "Delete" }, resetButton { "Reset" };
+    juce::TextEditor presetName;
+    juce::TextButton saveOk { "Save" }, saveCancel { "Cancel" };
+    juce::Label presetLabel;
+    juce::Array<AutomixerProcessor::PresetInfo> presets;
+    bool saving = false;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> groupAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> automixAttachment;

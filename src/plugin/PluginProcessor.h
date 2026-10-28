@@ -6,13 +6,20 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
+#include <map>
 #include <memory>
 
 class AutomixerProcessor : public juce::AudioProcessor,
-                           private juce::Timer
+                           private juce::Timer,
+                           private juce::AudioProcessorValueTreeState::Listener,
+                           private juce::AsyncUpdater
 {
 public:
     static constexpr int kNumGroups = 8;
+
+    // Settings that presets and Reset cover. Group, Automix and the name are
+    // routing for this track, so they are left alone.
+    static const juce::StringArray& presetParamIds();
 
     AutomixerProcessor();
     ~AutomixerProcessor() override;
@@ -52,7 +59,21 @@ public:
     void setUserName (const juce::String&);
     juce::String getUserName() const;
 
+    // Reset and presets (message thread).
+    void resetToDefaults();
+    struct PresetInfo { juce::String name; bool factory; };
+    juce::Array<PresetInfo> listPresets() const;
+    bool loadPreset (const juce::String& name);
+    bool saveUserPreset (const juce::String& name);
+    bool deleteUserPreset (const juce::String& name);
+    juce::String getCurrentPresetName() const { return params.state.getProperty ("presetName").toString(); }
+    static juce::File userPresetFolder();
+
 private:
+    void parameterChanged (const juce::String& id, float value) override;
+    void handleAsyncUpdate() override;
+    void applyValues (const std::map<juce::String, float>& values);
+    void setParamValue (const juce::String& id, float value);
     void timerCallback() override;
     void syncMembership();
     am::ChannelParams readParams() const;
@@ -87,6 +108,11 @@ private:
     std::atomic<float>* pAttack = nullptr;
     std::atomic<float>* pHold = nullptr;
     std::atomic<float>* pRelease = nullptr;
+    std::atomic<float>* pAmount = nullptr;
+
+    // The Amount value the detail controls were last set from. Loading state
+    // or a preset sets it first, so the macro never overwrites loaded values.
+    std::atomic<float> lastAppliedAmount { 50.0f };
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (AutomixerProcessor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutomixerProcessor)

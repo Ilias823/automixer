@@ -1,6 +1,7 @@
 // Unit tests for the automix core, using a private bus and synthetic "speech".
 
 #include "AutomixChannel.h"
+#include "Macro.h"
 
 #include <cmath>
 #include <cstdio>
@@ -191,6 +192,31 @@ int main()
         float* p2 = y.data() + 2 * kBlock;
         c.process (&p2, 1, kBlock, 500000 + kBlock); // ...confirmed
         check (! c.positionWasContinuous(), "a confirmed seek is accepted", 0);
+    }
+
+    {
+        // Amount 50 % must be exactly the factory defaults; 0 gentler, 100 harder.
+        const ChannelParams d;
+        const auto m = macroValues (50.0f), lo = macroValues (0.0f), hi = macroValues (100.0f);
+        check (m.rangeDb == d.rangeDb && m.sharpness == d.sharpness && m.holdMs == d.holdMs && m.releaseMs == d.releaseMs,
+               "Amount 50 % equals the defaults", m.rangeDb);
+        check (lo.rangeDb < m.rangeDb && m.rangeDb < hi.rangeDb, "Range grows with Amount (0/100 %)", hi.rangeDb);
+        check (lo.sharpness < m.sharpness && m.sharpness < hi.sharpness, "Focus grows with Amount", hi.sharpness);
+        check (lo.holdMs > m.holdMs && lo.releaseMs > m.releaseMs && m.releaseMs > hi.releaseMs,
+               "gentle holds and releases longer", lo.holdMs);
+
+        // And it really is gentler / more aggressive on audio: bleed mic gain.
+        auto bleedGain = [&] (float amountPct)
+        {
+            ChannelParams p2;
+            const auto mv = macroValues (amountPct);
+            p2.rangeDb = mv.rangeDb; p2.sharpness = mv.sharpness; p2.holdMs = mv.holdMs; p2.releaseMs = mv.releaseMs;
+            std::vector<std::vector<float>> mm { a, b };
+            return run (mm, 1.0, 2.4, p2)[1];
+        };
+        const double g0 = bleedGain (0), g50 = bleedGain (50), g100 = bleedGain (100);
+        std::printf ("INFO  bleed mic while A talks: gentle %.1f dB, default %.1f dB, aggressive %.1f dB\n", g0, g50, g100);
+        check (g0 > g50 && g50 > g100, "bleed mic drops further as Amount rises", g100);
     }
 
     std::printf ("\n%s (%d failed)\n", failures == 0 ? "ALL PASSED" : "FAILURES", failures);

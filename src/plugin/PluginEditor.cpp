@@ -131,19 +131,7 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
     for (size_t i = 0; i < knobs.size(); ++i)
     {
         auto& k = knobs[i];
-        // Horizontal bars: drag left/right anywhere on the bar (the value moves
-        // by the distance dragged, it never jumps to the click), double-click
-        // to reset. Easier in a host window than knobs.
-        k.slider.setSliderStyle (juce::Slider::LinearBar);
-        k.slider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 0, 0);
-        k.slider.setColour (juce::Slider::trackColourId, kAccent.withAlpha (0.55f));
-        k.slider.setColour (juce::Slider::backgroundColourId, kPanel);
-        k.slider.setColour (juce::Slider::textBoxTextColourId, kText);
-        k.slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-        k.slider.setSliderSnapsToMousePosition (false); // relative drag, no jump on click
-        k.slider.setVelocityBasedMode (false);
-        if (auto* prm = dynamic_cast<juce::RangedAudioParameter*> (proc.params.getParameter (ids[i].first)))
-            k.slider.setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
+        styleBar (k.slider, ids[i].first);
         k.label.setText (ids[i].second, juce::dontSendNotification);
         k.label.setJustificationType (juce::Justification::centredLeft);
         k.label.setColour (juce::Label::textColourId, kDim);
@@ -152,13 +140,146 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
         k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.params, ids[i].first, k.slider);
     }
 
-    setSize (600, 470);
+    // Amount: one bar that sets Range, Focus, Hold and Release together.
+    styleBar (amount.slider, "amount");
+    amount.slider.setColour (juce::Slider::trackColourId, kGain.withAlpha (0.65f));
+    amount.label.setText ("Amount", juce::dontSendNotification);
+    amount.label.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+    amount.label.setColour (juce::Label::textColourId, kText);
+    addAndMakeVisible (amount.slider);
+    addAndMakeVisible (amount.label);
+    amount.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.params, "amount", amount.slider);
+
+    gentleLabel.setText ("gentle", juce::dontSendNotification);
+    aggressiveLabel.setText ("aggressive", juce::dontSendNotification);
+    aggressiveLabel.setJustificationType (juce::Justification::centredRight);
+    detailsLabel.setText ("Details (Amount sets Range, Focus, Hold and Release; fine-tune here)", juce::dontSendNotification);
+    for (auto* l : { &gentleLabel, &aggressiveLabel, &detailsLabel })
+    {
+        l->setFont (juce::FontOptions (11.5f));
+        l->setColour (juce::Label::textColourId, kDim);
+        addAndMakeVisible (*l);
+    }
+
+    // Presets.
+    presetLabel.setText ("Preset", juce::dontSendNotification);
+    presetLabel.setColour (juce::Label::textColourId, kDim);
+    addAndMakeVisible (presetLabel);
+    presetBox.setTextWhenNothingSelected ("(no preset)");
+    presetBox.onChange = [this]
+    {
+        const int idx = presetBox.getSelectedId() - 1;
+        if (idx >= 0 && idx < presets.size() && presets[idx].name != proc.getCurrentPresetName())
+            proc.loadPreset (presets[idx].name);
+        deleteButton.setEnabled (idx >= 0 && idx < presets.size() && ! presets[idx].factory);
+    };
+    addAndMakeVisible (presetBox);
+
+    saveButton.onClick = [this] { showSaveRow (true); };
+    deleteButton.onClick = [this]
+    {
+        const int idx = presetBox.getSelectedId() - 1;
+        if (idx >= 0 && idx < presets.size() && ! presets[idx].factory)
+            proc.deleteUserPreset (presets[idx].name);
+        refreshPresetList();
+    };
+    resetButton.setTooltip ("Set every value back to its default (Group, Automix and Name stay)");
+    resetButton.onClick = [this]
+    {
+        proc.resetToDefaults();
+        refreshPresetList();
+    };
+    for (auto* b : { &saveButton, &deleteButton, &resetButton })
+        addAndMakeVisible (*b);
+
+    presetName.setTextToShowWhenEmpty ("preset name", kDim);
+    presetName.onReturnKey = [this] { saveOk.triggerClick(); };
+    presetName.onEscapeKey = [this] { showSaveRow (false); };
+    saveOk.onClick = [this]
+    {
+        if (proc.saveUserPreset (presetName.getText()))
+        {
+            showSaveRow (false);
+            refreshPresetList();
+        }
+        else
+        {
+            presetName.setColour (juce::TextEditor::outlineColourId, juce::Colours::indianred);
+            presetName.repaint();
+        }
+    };
+    saveCancel.onClick = [this] { showSaveRow (false); };
+    for (auto* c : std::initializer_list<juce::Component*> { &presetName, &saveOk, &saveCancel })
+        addChildComponent (*c);
+
+    refreshPresetList();
+
+    setSize (600, 560);
     startTimerHz (15);
 }
 
 AutomixerEditor::~AutomixerEditor()
 {
     setLookAndFeel (nullptr);
+}
+
+void AutomixerEditor::styleBar (juce::Slider& sl, const juce::String& paramId)
+{
+    // Horizontal bars: drag left/right anywhere on the bar (the value moves
+    // by the distance dragged, it never jumps to the click), double-click
+    // to reset. Easier in a host window than knobs.
+    sl.setSliderStyle (juce::Slider::LinearBar);
+    sl.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 0, 0);
+    sl.setColour (juce::Slider::trackColourId, kAccent.withAlpha (0.55f));
+    sl.setColour (juce::Slider::backgroundColourId, kPanel);
+    sl.setColour (juce::Slider::textBoxTextColourId, kText);
+    sl.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    sl.setSliderSnapsToMousePosition (false);
+    sl.setVelocityBasedMode (false);
+    if (auto* prm = dynamic_cast<juce::RangedAudioParameter*> (proc.params.getParameter (paramId)))
+        sl.setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
+}
+
+void AutomixerEditor::refreshPresetList()
+{
+    presets = proc.listPresets();
+    presetBox.clear (juce::dontSendNotification);
+    bool userHeading = false;
+    presetBox.addSectionHeading ("Factory");
+    for (int i = 0; i < presets.size(); ++i)
+    {
+        if (! presets[i].factory && ! userHeading)
+        {
+            presetBox.addSeparator();
+            presetBox.addSectionHeading ("My presets");
+            userHeading = true;
+        }
+        presetBox.addItem (presets[i].name, i + 1);
+    }
+
+    const auto current = proc.getCurrentPresetName();
+    int sel = 0;
+    for (int i = 0; i < presets.size(); ++i)
+        if (presets[i].name == current)
+            sel = i + 1;
+    presetBox.setSelectedId (sel, juce::dontSendNotification);
+    deleteButton.setEnabled (sel > 0 && ! presets[sel - 1].factory);
+}
+
+void AutomixerEditor::showSaveRow (bool show)
+{
+    saving = show;
+    for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &saveButton, &deleteButton, &resetButton })
+        c->setVisible (! show);
+    for (auto* c : std::initializer_list<juce::Component*> { &presetName, &saveOk, &saveCancel })
+        c->setVisible (show);
+    if (show)
+    {
+        presetName.setText (proc.getCurrentPresetName(), false);
+        presetName.removeColour (juce::TextEditor::outlineColourId);
+        presetName.grabKeyboardFocus();
+        presetName.selectAll();
+    }
 }
 
 void AutomixerEditor::paint (juce::Graphics& g)
@@ -185,12 +306,40 @@ void AutomixerEditor::resized()
 
     r.removeFromTop (6);
     status.setBounds (r.removeFromTop (18));
+    r.removeFromTop (6);
+
+    // Preset row (or the inline save row in its place).
+    auto presetRow = r.removeFromTop (26);
+    presetLabel.setBounds (presetRow.removeFromLeft (54));
+    auto right = presetRow.removeFromRight (230);
+    resetButton.setBounds (right.removeFromRight (70));
+    right.removeFromRight (6);
+    deleteButton.setBounds (right.removeFromRight (70));
+    right.removeFromRight (6);
+    saveButton.setBounds (right.removeFromRight (72));
+    presetBox.setBounds (presetRow.withTrimmedRight (6));
+    auto saveRow = presetLabel.getBounds().getUnion (resetButton.getBounds()).withTrimmedLeft (54);
+    saveCancel.setBounds (saveRow.removeFromRight (70));
+    saveRow.removeFromRight (6);
+    saveOk.setBounds (saveRow.removeFromRight (70));
+    saveRow.removeFromRight (6);
+    presetName.setBounds (saveRow);
+    r.removeFromTop (10);
+
+    // Amount macro.
+    auto amountRow = r.removeFromTop (34);
+    amount.label.setBounds (amountRow.removeFromLeft (86));
+    amount.slider.setBounds (amountRow);
+    auto captions = r.removeFromTop (16).withTrimmedLeft (86);
+    gentleLabel.setBounds (captions.removeFromLeft (captions.getWidth() / 2));
+    aggressiveLabel.setBounds (captions);
     r.removeFromTop (4);
 
-    // Controls: two columns of labelled bars under the meters.
+    // Detail controls: two columns of labelled bars at the bottom.
     const int rowH = 30, rows = ((int) knobs.size() + 1) / 2;
     auto controls = r.removeFromBottom (rows * rowH);
-    r.removeFromBottom (8);
+    detailsLabel.setBounds (r.removeFromBottom (18));
+    r.removeFromBottom (2);
     meters.setBounds (r.reduced (0, 4));
 
     const int colW = (controls.getWidth() - 16) / 2;
@@ -245,4 +394,13 @@ void AutomixerEditor::timerCallback()
 
     if (! name.hasKeyboardFocus (true) && name.getText() != proc.getUserName())
         name.setText (proc.getUserName(), false);
+
+    // Keep the preset box in step with state loaded or changed elsewhere.
+    if (! saving)
+    {
+        const int sel = presetBox.getSelectedId();
+        const auto shown = sel > 0 && sel <= presets.size() ? presets[sel - 1].name : juce::String();
+        if (shown != proc.getCurrentPresetName())
+            refreshPresetList();
+    }
 }

@@ -150,6 +150,42 @@ int main (int argc, char** argv)
            "Range restored: " + cr->getCurrentValueAsText());
     check (cg->getCurrentValueAsText() == "C", "Group restored: " + cg->getCurrentValueAsText());
 
+    // Amount macro: moving it sets the detail controls (applied on the message
+    // thread), but loading saved state must keep the saved detail values.
+    {
+        auto* amount = findParam (*a, "Amount");
+        check (amount != nullptr, "Amount parameter exposed to host");
+        if (amount != nullptr)
+        {
+            amount->setValueNotifyingHost (amount->getValueForText ("100"));
+            for (int k = 0; k < 3; ++k)
+            {
+                juce::AudioBuffer<float> tmp (1, block);
+                tmp.clear();
+                a->processBlock (tmp, midi);
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+            }
+            check (range->getCurrentValueAsText() == "30.0 dB", "Amount 100 % sets Range: " + range->getCurrentValueAsText());
+            auto* hold = findParam (*a, "Hold");
+            check (hold->getCurrentValueAsText() == "0 ms", "Amount 100 % sets Hold: " + hold->getCurrentValueAsText());
+
+            // Saved state with a hand-tuned Range must come back as saved.
+            range->setValueNotifyingHost (range->getValueForText ("12.0"));
+            juce::AudioBuffer<float> tmp (1, block);
+            tmp.clear();
+            a->processBlock (tmp, midi);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+            juce::MemoryBlock st;
+            a->getStateInformation (st);
+            auto d = fm.createPluginInstance (*descs[0], sr, block, err);
+            d->setStateInformation (st.getData(), (int) st.getSize());
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+            check (findParam (*d, "Range")->getCurrentValueAsText() == "12.0 dB",
+                   "hand-tuned Range survives reload with Amount 100 %: " + findParam (*d, "Range")->getCurrentValueAsText());
+            d->releaseResources();
+        }
+    }
+
     for (auto* p : { a.get(), b.get(), c.get() })
         p->releaseResources();
 

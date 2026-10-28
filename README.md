@@ -14,6 +14,7 @@ Restart Resolve after installing.
 
 | Control | Default | What it does |
 |---|---|---|
+| Amount | 50 % | One bar from gentle to aggressive: sets Range, Focus, Hold and Release together. Fine-tune those afterwards |
 | Group | A | Instances in the same group compete. Off = plain pass-through |
 | Automix | on | Off: this mic stays at unity and the others ignore it |
 | Range | 18 dB | How far an inactive mic drops |
@@ -22,7 +23,9 @@ Restart Resolve after installing.
 | Weight | 0 dB | Favour (+) or hold back (-) this mic |
 | Attack / Hold / Release | 2 / 0 / 80 ms | Gain smoothing |
 
-The plugin adds a fixed latency (about one host block + 20 ms). Resolve compensates for it.
+**Presets:** the Preset menu has factory presets (Default, Gentle, Aggressive, Noisy room) and your own. **Save...** stores the current values under a name in `~/Library/Application Support/Automixer/Presets`. **Delete** removes the selected preset of your own. **Reset** sets every value back to its default. Group, Automix and Name are per track and are never changed by presets or Reset.
+
+The plugin adds a fixed latency (about three host blocks + 20 ms, ~52 ms in Resolve). Resolve compensates for it.
 
 ## Offline tuning
 
