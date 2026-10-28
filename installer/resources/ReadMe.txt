@@ -17,3 +17,6 @@ Sync check (how two lav recordings line up)
 Uninstall
   sudo "/Library/Application Support/Automixer/uninstall.sh"
   Your own presets in ~/Library/Application Support/Automixer/Presets are kept.
+
+Support
+  If Automixer saves you time: https://ko-fi.com/ilias823
