@@ -59,6 +59,9 @@ public:
     // Audio thread. pos is the timeline sample position of io[c][0].
     void process (float* const* io, int numChannels, int numSamples, int64_t pos);
 
+    // Audio thread, before process(): whether the host transport is playing.
+    void setHostPlaying (bool p) { hostPlaying = p; }
+
     float currentGainDb() const { return gainDb; }
     float currentLevelDb() const;
     float noiseFloorDb() const { return noise > 0 ? float (10.0 * std::log10 (noise)) : -200.0f; }
@@ -119,6 +122,7 @@ private:
     int64_t expectedPos = INT64_MIN;
     int64_t pendingNext = 0;
     bool pendingJump = false;
+    bool hostPlaying = true;
     bool continuous = true;
 
     std::atomic<uintptr_t> attachment { 0 }; // BusLayout* | (slot + 1)

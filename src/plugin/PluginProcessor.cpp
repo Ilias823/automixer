@@ -166,6 +166,7 @@ void AutomixerProcessor::runChannel (juce::AudioBuffer<float>& buffer, bool bypa
         posWrite.store (w + 1, std::memory_order_release);
     }
     hasHostPosition.store (fromHost);
+    channel.setHostPlaying (playing != 0); // unknown (-1) counts as playing
     fallbackPos = pos + buffer.getNumSamples();
 
     channel.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples(), pos);
@@ -236,7 +237,24 @@ void AutomixerProcessor::syncMembership()
     {
         auto& s = bus->slots[joinedSlot];
         s.heartbeatNs.store (am::monotonicNs());
-        s.flags.store (pAutomix->load() > 0.5f ? 1u : 0u);
+        am::GroupBus::setFlags (s, am::kFlagAutomix, pAutomix->load() > 0.5f ? am::kFlagAutomix : 0u);
+
+        // While we play, a live peer that is neither playing nor at our
+        // timeline position is a deleted instance the host keeps for undo:
+        // mark it so it stays hidden after the transport stops.
+        if ((s.flags.load() & am::kFlagPlaying) != 0)
+        {
+            const uint64_t now = am::monotonicNs();
+            const int hops = int (juce::jmax (8000.0, getSampleRate()) / am::kHop);
+            for (int i = 0; i < am::kMaxSlots; ++i)
+            {
+                auto& peer = bus->slots[i];
+                if (i == joinedSlot || ! am::GroupBus::isActiveMember (peer, now))
+                    continue;
+                if ((peer.flags.load() & am::kFlagPlaying) == 0 && ! am::GroupBus::isOnSameTimeline (peer, s, now, hops))
+                    am::GroupBus::setFlags (peer, am::kFlagLeftBehind, am::kFlagLeftBehind);
+            }
+        }
         am::GroupBus::setName (s, displayName().toStdString());
     }
 }

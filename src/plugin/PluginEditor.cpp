@@ -38,7 +38,12 @@ juce::Array<int> GroupMeters::visibleSlots() const
             if (out.contains (i))
                 continue;
             const auto& s = bus->slots[i];
-            if (! am::GroupBus::isOnSameTimeline (s, me, now, sameTimelineHops()))
+            // While playing, only members on our timeline position count. While
+            // stopped, hosts run instances on unrelated clocks, so show every
+            // live member except those seen left behind during playback.
+            const bool bothPlaying = (me.flags.load() & am::kFlagPlaying) && (s.flags.load() & am::kFlagPlaying);
+            if (bothPlaying ? ! am::GroupBus::isOnSameTimeline (s, me, now, sameTimelineHops())
+                            : (! am::GroupBus::isActiveMember (s, now) || (s.flags.load() & am::kFlagLeftBehind) != 0))
                 continue;
             if ((pass == 0) == isDefaultName (am::GroupBus::getName (s)))
                 continue; // real names first, host defaults second
@@ -81,7 +86,7 @@ void GroupMeters::paint (juce::Graphics& g)
 
         auto row = area.removeFromTop (rowH).toFloat();
         const bool isSelf = i == self;
-        const bool enabled = (s.flags.load() & 1) != 0;
+        const bool enabled = (s.flags.load() & am::kFlagAutomix) != 0;
         const float level = s.meterLevelDb.load();
         const float gain = s.meterGainDb.load();
         const bool talking = am::entryDrive (s.latest.load()) > 0.0f && enabled;

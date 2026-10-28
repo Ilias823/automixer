@@ -160,7 +160,7 @@ int GroupBus::claimSlot (uint64_t instanceId)
                 s.latest.store (0);
                 s.meterLevelDb.store (-100.0f);
                 s.meterGainDb.store (0.0f);
-                s.flags.store (1);
+                s.flags.store (kFlagAutomix);
                 for (auto& w : s.name)
                     w.store (0);
                 s.heartbeatNs.store (now);

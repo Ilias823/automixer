@@ -201,7 +201,7 @@ void AutomixChannel::computeGainHop (BusLayout* bus, int slot, int64_t hop)
             if (k >= 0 && j == slot)
                 continue;
             const auto& peer = bus->slots[j];
-            if (j != slot && (! GroupBus::isAlive (peer, now) || (peer.flags.load() & 1) == 0))
+            if (j != slot && (! GroupBus::isAlive (peer, now) || (peer.flags.load() & kFlagAutomix) == 0))
                 continue;
 
             float v;
@@ -293,7 +293,10 @@ void AutomixChannel::process (float* const* io, int channels, int n, int64_t pos
     if (self != nullptr)
     {
         self->heartbeatNs.store (monotonicNs());
-        self->flags.store (params.automix ? 1u : 0u);
+        // Playing clears "left behind": an instance that follows the timeline
+        // again (for example restored by undo) is a member again.
+        const uint32_t bits = (params.automix ? kFlagAutomix : 0u) | (hostPlaying ? kFlagPlaying : 0u);
+        GroupBus::setFlags (*self, kFlagAutomix | kFlagPlaying | (hostPlaying ? kFlagLeftBehind : 0u), bits);
     }
 
     const int chans = std::min (channels, numCh);

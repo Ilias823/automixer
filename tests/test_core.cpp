@@ -260,6 +260,28 @@ int main()
                "both talking with a twin of B: still ~-3 dB each, not -5", g2[0]);
     }
 
+    {
+        // "Left behind" (deleted instance kept by the host) survives while the
+        // instance keeps processing stopped, and clears once it plays again.
+        auto bus = GroupBus::createPrivate();
+        AutomixChannel c;
+        c.prepare (kSr, kBlock, 1);
+        const int sl = bus->claimSlot (42);
+        c.attach (bus->layout(), sl);
+        auto& slot = bus->layout()->slots[sl];
+        std::vector<float> buf (kBlock, 0.0f);
+        float* ptr = buf.data();
+        GroupBus::setFlags (slot, kFlagLeftBehind, kFlagLeftBehind);
+        c.setHostPlaying (false);
+        c.process (&ptr, 1, kBlock, 0);
+        check ((slot.flags.load() & kFlagLeftBehind) != 0 && (slot.flags.load() & kFlagPlaying) == 0,
+               "stopped instance keeps its left-behind mark", slot.flags.load());
+        c.setHostPlaying (true);
+        c.process (&ptr, 1, kBlock, kBlock);
+        check ((slot.flags.load() & kFlagLeftBehind) == 0 && (slot.flags.load() & kFlagPlaying) != 0,
+               "playing again clears the mark", slot.flags.load());
+    }
+
     std::printf ("\n%s (%d failed)\n", failures == 0 ? "ALL PASSED" : "FAILURES", failures);
     return failures == 0 ? 0 : 1;
 }

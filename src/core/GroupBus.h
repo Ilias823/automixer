@@ -32,6 +32,11 @@ constexpr uint32_t kBusMagic = 0x414D5832; // "AMX2"
 
 uint64_t monotonicNs();
 
+constexpr uint32_t kFlagAutomix = 1;     // automix enabled
+constexpr uint32_t kFlagPlaying = 2;     // host transport playing (or rendering)
+constexpr uint32_t kFlagLeftBehind = 4;  // did not follow the timeline while others played:
+                                         // a deleted instance the host keeps for undo
+
 struct BusSlot
 {
     std::atomic<uint64_t> owner;        // instance id, 0 = free
@@ -39,7 +44,7 @@ struct BusSlot
     std::atomic<uint64_t> latest;       // packed (hop tag, drive) of the newest hop written
     std::atomic<float> meterLevelDb;    // input level, for the UI
     std::atomic<float> meterGainDb;     // applied gain, for the UI
-    std::atomic<uint32_t> flags;        // bit 0: automix enabled
+    std::atomic<uint32_t> flags;        // kFlag* bits
     std::atomic<uint64_t> name[kNameWords];
     std::atomic<uint64_t> ring[kRingHops];  // packed (hop tag, score)
     std::atomic<uint64_t> power[kRingHops]; // packed (hop tag, raw signal power): finds twin instances
@@ -137,6 +142,13 @@ public:
             ++matches;
         }
         return matches == 4;
+    }
+
+    // Sets or clears some flag bits without touching the others.
+    static void setFlags (BusSlot& s, uint32_t mask, uint32_t bits)
+    {
+        uint32_t f = s.flags.load();
+        while (! s.flags.compare_exchange_weak (f, (f & ~mask) | (bits & mask))) {}
     }
 
     static bool isOnSameTimeline (const BusSlot& peer, const BusSlot& self, uint64_t nowNs, int maxHops)
