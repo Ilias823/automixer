@@ -17,6 +17,7 @@ Restart Resolve after installing.
 | Amount | 50 % | One bar from gentle to aggressive: sets Range, Focus, Hold and Release together. Fine-tune those afterwards |
 | Group | A | Instances in the same group compete. Off = plain pass-through |
 | Automix | on | Off: this mic stays at unity and the others ignore it |
+| Link | on | Linked mics in a group share Amount, Range, Focus, Sensitivity, Attack, Hold, Release and the preset. Weight stays per mic. Off: this mic keeps its own settings; switching it back on takes the group's |
 | Range | 18 dB | How far an inactive mic drops |
 | Focus | 3.0x | How hard the loudest mic wins (1 = classic Dugan) |
 | Sensitivity | 6 dB | How far above its own noise floor a mic must be to count as talking |

@@ -7,6 +7,7 @@
 
 #include <array>
 #include <map>
+#include <vector>
 #include <memory>
 
 class AutomixerProcessor : public juce::AudioProcessor,
@@ -20,6 +21,10 @@ public:
     // Settings that presets and Reset cover. Group, Automix and the name are
     // routing for this track, so they are left alone.
     static const juce::StringArray& presetParamIds();
+
+    // Settings shared by linked members of a group (Link on). Weight is per
+    // mic, so it is not linked.
+    static const juce::StringArray& linkedParamIds();
 
     AutomixerProcessor();
     ~AutomixerProcessor() override;
@@ -74,6 +79,13 @@ private:
     void handleAsyncUpdate() override;
     void applyValues (const std::map<juce::String, float>& values);
     void setParamValue (const juce::String& id, float value);
+    void syncLinkedSettings (am::BusLayout&, int slot);
+    std::vector<float> linkedSnapshot() const;
+
+    bool linkPrimed = false;          // message thread: linked state taken over since joining
+    uint64_t lastSeenSettings = 0;    // version of the group settings applied or written
+    std::vector<float> lastLinked;
+    juce::String lastLinkedPreset;
     void timerCallback() override;
     void syncMembership();
     am::ChannelParams readParams() const;
@@ -109,6 +121,7 @@ private:
     std::atomic<float>* pHold = nullptr;
     std::atomic<float>* pRelease = nullptr;
     std::atomic<float>* pAmount = nullptr;
+    std::atomic<float>* pLink = nullptr;
 
     // The Amount value the detail controls were last set from. Loading state
     // or a preset sets it first, so the macro never overwrites loaded values.

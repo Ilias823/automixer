@@ -1,7 +1,9 @@
 #include "GroupBus.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <new>
@@ -49,8 +51,13 @@ BusLayout* processLocalLayout (int group)
 
 BusLayout* mapShared (int group)
 {
+    // AMX_BUS_NAMESPACE keeps test runs (host_check) off the buses that a
+    // running host's instances use. macOS limits shm names to 31 characters.
+    char ns[9] = {};
+    if (const char* e = std::getenv ("AMX_BUS_NAMESPACE"))
+        std::strncpy (ns, e, sizeof (ns) - 1);
     char name[32];
-    std::snprintf (name, sizeof (name), "/amx2.%d.g%d", int (getuid()), group);
+    std::snprintf (name, sizeof (name), "/amx3.%s%d.g%d", ns, int (getuid()), group);
 
     int fd = shm_open (name, O_RDWR | O_CREAT, 0600);
     if (fd < 0)
@@ -201,6 +208,71 @@ std::string GroupBus::getName (const BusSlot& s)
     }
     buf[kNameWords * 8 - 1] = 0;
     return std::string (buf);
+}
+
+namespace
+{
+void packName (std::atomic<uint64_t>* words, const std::string& name)
+{
+    char buf[kNameWords * 8] = {};
+    std::strncpy (buf, name.c_str(), sizeof (buf) - 1);
+    for (int i = 0; i < kNameWords; ++i)
+    {
+        uint64_t w;
+        std::memcpy (&w, buf + i * 8, 8);
+        words[i].store (w, std::memory_order_relaxed);
+    }
+}
+
+std::string unpackName (const std::atomic<uint64_t>* words)
+{
+    char buf[kNameWords * 8 + 1] = {};
+    for (int i = 0; i < kNameWords; ++i)
+    {
+        uint64_t w = words[i].load (std::memory_order_relaxed);
+        std::memcpy (buf + i * 8, &w, 8);
+    }
+    buf[kNameWords * 8 - 1] = 0;
+    return std::string (buf);
+}
+} // namespace
+
+void GroupBus::writeSettings (BusLayout& m, uint64_t writerId, int writerSlot, const float* values, int count, const std::string& presetName)
+{
+    auto& st = m.settings;
+    // Take the seqlock: move version from even to odd.
+    uint64_t v = st.version.load();
+    for (;;)
+    {
+        if ((v & 1) == 0 && st.version.compare_exchange_weak (v, v + 1))
+            break;
+        if (v & 1)
+            v = st.version.load();
+    }
+    for (int i = 0; i < std::min (count, kSharedValues); ++i)
+        st.values[i].store (values[i], std::memory_order_relaxed);
+    packName (st.presetName, presetName);
+    st.writer.store (writerId, std::memory_order_relaxed);
+    st.writerSlot.store (writerSlot, std::memory_order_relaxed);
+    st.version.store (v + 2, std::memory_order_release);
+}
+
+bool GroupBus::readSettings (const BusLayout& m, uint64_t& version, uint64_t& writerId, int& writerSlot, float* values, int count, std::string& presetName)
+{
+    const auto& st = m.settings;
+    const uint64_t v1 = st.version.load (std::memory_order_acquire);
+    if (v1 == 0 || (v1 & 1))
+        return false;
+    for (int i = 0; i < std::min (count, kSharedValues); ++i)
+        values[i] = st.values[i].load (std::memory_order_relaxed);
+    presetName = unpackName (st.presetName);
+    writerId = st.writer.load (std::memory_order_relaxed);
+    writerSlot = st.writerSlot.load (std::memory_order_relaxed);
+    std::atomic_thread_fence (std::memory_order_acquire);
+    if (st.version.load (std::memory_order_relaxed) != v1)
+        return false;
+    version = v1;
+    return true;
 }
 
 bool GroupBus::isAlive (const BusSlot& s, uint64_t nowNs)

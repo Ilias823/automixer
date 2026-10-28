@@ -54,6 +54,7 @@ private:
     juce::ComboBox group;
     juce::Label groupLabel, nameLabel, status;
     juce::ToggleButton automix { "Automix" };
+    juce::ToggleButton link { "Link" };
     juce::TextEditor name;
     GroupMeters meters;
     juce::String meterSignature;
@@ -73,7 +74,7 @@ private:
     bool saving = false;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> groupAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> automixAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> automixAttachment, linkAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AutomixerEditor)
 };

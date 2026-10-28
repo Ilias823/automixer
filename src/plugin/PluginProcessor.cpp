@@ -25,6 +25,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         NormalisableRange<float> (0.0f, 100.0f, 1.0f), 50.0f,
         AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v)) + " %"; })));
     l.add (std::make_unique<AudioParameterBool> (ParameterID { "automix", 1 }, "Automix", true));
+    l.add (std::make_unique<AudioParameterBool> (ParameterID { "link", 3 }, "Link", true));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "weight", 1 }, "Weight",
         NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withStringFromValueFunction (db)));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "range", 1 }, "Range",
@@ -62,6 +63,12 @@ const FactoryPreset kFactoryPresets[] = {
 constexpr const char* kPresetExtension = ".amxpreset";
 } // namespace
 
+const juce::StringArray& AutomixerProcessor::linkedParamIds()
+{
+    static const juce::StringArray ids { "amount", "range", "sharpness", "margin", "attack", "hold", "release" };
+    return ids;
+}
+
 const juce::StringArray& AutomixerProcessor::presetParamIds()
 {
     static const juce::StringArray ids { "amount", "range", "sharpness", "margin", "weight", "attack", "hold", "release" };
@@ -88,6 +95,7 @@ AutomixerProcessor::AutomixerProcessor()
     pHold = params.getRawParameterValue ("hold");
     pRelease = params.getRawParameterValue ("release");
     pAmount = params.getRawParameterValue ("amount");
+    pLink = params.getRawParameterValue ("link");
     params.addParameterListener ("amount", this);
 
     channel.prepare (48000.0, 2048, 2);
@@ -228,6 +236,7 @@ void AutomixerProcessor::syncMembership()
                 b = am::GroupBus::open (wanted);
             joinedGroup = wanted;
             joinedSlot = b->claimSlot (instanceId);
+            linkPrimed = false; // take over (or seed) the new group's linked settings
             if (joinedSlot >= 0)
                 channel.attach (b->layout(), joinedSlot);
         }
@@ -238,6 +247,7 @@ void AutomixerProcessor::syncMembership()
         auto& s = bus->slots[joinedSlot];
         s.heartbeatNs.store (am::monotonicNs());
         am::GroupBus::setFlags (s, am::kFlagAutomix, pAutomix->load() > 0.5f ? am::kFlagAutomix : 0u);
+        syncLinkedSettings (*bus, joinedSlot);
 
         // While we play, a live peer that is neither playing nor at our
         // timeline position is a deleted instance the host keeps for undo:
@@ -339,6 +349,88 @@ void AutomixerProcessor::setParamValue (const juce::String& id, float value)
         p->setValueNotifyingHost (norm);
         p->endChangeGesture();
     }
+}
+
+std::vector<float> AutomixerProcessor::linkedSnapshot() const
+{
+    std::vector<float> v;
+    for (const auto& id : linkedParamIds())
+        if (auto* p = params.getParameter (id))
+            v.push_back (p->convertFrom0to1 (p->getValue()));
+    return v;
+}
+
+void AutomixerProcessor::syncLinkedSettings (am::BusLayout& bus, int slot)
+{
+    const auto cur = linkedSnapshot();
+    const auto preset = getCurrentPresetName();
+    const int n = (int) cur.size();
+
+    if (pLink->load() < 0.5f)
+    {
+        linkPrimed = false; // switching Link on again takes over the group's settings
+        lastLinked = cur;
+        lastLinkedPreset = preset;
+        return;
+    }
+
+    auto apply = [&] (const float* vals, const std::string& name)
+    {
+        std::map<juce::String, float> m;
+        for (int i = 0; i < n; ++i)
+            m[linkedParamIds()[i]] = vals[i];
+        applyValues (m);
+        params.state.setProperty ("presetName", juce::String (name), nullptr);
+        lastLinked = linkedSnapshot();
+        lastLinkedPreset = getCurrentPresetName();
+    };
+
+    auto publish = [&]
+    {
+        am::GroupBus::writeSettings (bus, instanceId, slot, cur.data(), n, preset.toStdString());
+        lastSeenSettings = bus.settings.version.load();
+        lastLinked = cur;
+        lastLinkedPreset = preset;
+    };
+
+    float vals[am::kSharedValues] = {};
+    uint64_t ver = 0, writer = 0;
+    int writerSlot = -1;
+    std::string name;
+    const bool have = am::GroupBus::readSettings (bus, ver, writer, writerSlot, vals, n, name);
+    const bool writerLive = have && writerSlot >= 0 && writerSlot < am::kMaxSlots
+                            && bus.slots[writerSlot].owner.load() == writer
+                            && am::GroupBus::isAlive (bus.slots[writerSlot], am::monotonicNs());
+
+    if (! linkPrimed)
+    {
+        // Just joined, or Link was switched on: follow the group if a live
+        // member set it, otherwise our values become the group's.
+        linkPrimed = true;
+        if (writerLive && writer != instanceId)
+        {
+            lastSeenSettings = ver;
+            apply (vals, name);
+        }
+        else
+        {
+            publish();
+        }
+        return;
+    }
+
+    if (have && ver != lastSeenSettings && writer != instanceId)
+    {
+        lastSeenSettings = ver;
+        apply (vals, name);
+        return;
+    }
+
+    bool changed = preset != lastLinkedPreset || cur.size() != lastLinked.size();
+    for (size_t i = 0; ! changed && i < cur.size(); ++i)
+        changed = std::abs (cur[i] - lastLinked[i]) > 1e-4f * std::max (1.0f, std::abs (cur[i]));
+    if (changed)
+        publish();
 }
 
 void AutomixerProcessor::applyValues (const std::map<juce::String, float>& values)

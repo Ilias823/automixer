@@ -153,6 +153,10 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
     addAndMakeVisible (automix);
     automixAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.params, "automix", automix);
 
+    link.setTooltip ("Share Amount and the detail settings with every linked mic in this group (Weight stays per mic)");
+    addAndMakeVisible (link);
+    linkAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.params, "link", link);
+
     name.setTextToShowWhenEmpty ("track name", kDim);
     name.setText (proc.getUserName(), false);
     name.onTextChange = [this] { proc.setUserName (name.getText()); };
@@ -193,7 +197,7 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
     gentleLabel.setText ("gentle", juce::dontSendNotification);
     aggressiveLabel.setText ("aggressive", juce::dontSendNotification);
     aggressiveLabel.setJustificationType (juce::Justification::centredRight);
-    detailsLabel.setText ("Details (Amount sets Range, Focus, Hold and Release; fine-tune here)", juce::dontSendNotification);
+    detailsLabel.setText ("Details (Amount sets Range, Focus, Hold and Release; with Link on, all linked mics share these except Weight)", juce::dontSendNotification);
     for (auto* l : { &gentleLabel, &aggressiveLabel, &detailsLabel })
     {
         l->setFont (juce::FontOptions (11.5f));
@@ -254,7 +258,7 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
 
     refreshPresetList();
 
-    setSize (600, 560);
+    setSize (660, 560);
     startTimerHz (15);
 }
 
@@ -341,6 +345,7 @@ void AutomixerEditor::resized()
     group.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (12);
     automix.setBounds (top.removeFromLeft (90));
+    link.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (8);
     nameLabel.setBounds (top.removeFromLeft (44));
     name.setBounds (top);

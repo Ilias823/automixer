@@ -28,7 +28,7 @@ constexpr int kMaxSlots = 16;
 constexpr int kHop = 16;               // samples per detector hop
 constexpr int kRingHops = 1 << 15;     // ~10.9 s of history at 48 kHz
 constexpr int kNameWords = 4;          // 32 chars of track name
-constexpr uint32_t kBusMagic = 0x414D5832; // "AMX2"
+constexpr uint32_t kBusMagic = 0x414D5833; // "AMX3"
 
 uint64_t monotonicNs();
 
@@ -50,10 +50,23 @@ struct BusSlot
     std::atomic<uint64_t> power[kRingHops]; // packed (hop tag, raw signal power): finds twin instances
 };
 
+// Settings shared by the linked members of a group. Written with a seqlock:
+// `version` is odd while a writer is busy and grows by 2 per update.
+constexpr int kSharedValues = 16;
+struct SharedSettings
+{
+    std::atomic<uint64_t> version;
+    std::atomic<uint64_t> writer;       // instance id of the last writer
+    std::atomic<int32_t> writerSlot;
+    std::atomic<float> values[kSharedValues];
+    std::atomic<uint64_t> presetName[kNameWords];
+};
+
 struct BusLayout
 {
     std::atomic<uint32_t> magic;
     uint32_t reserved[3];
+    SharedSettings settings;
     BusSlot slots[kMaxSlots];
 };
 
@@ -102,6 +115,11 @@ public:
 
     static void setName (BusSlot&, const std::string&);
     static std::string getName (const BusSlot&);
+
+    // Linked settings. read() returns false while nothing valid is stored or
+    // a writer is busy (try again on the next tick).
+    static void writeSettings (BusLayout&, uint64_t writerId, int writerSlot, const float* values, int count, const std::string& presetName);
+    static bool readSettings (const BusLayout&, uint64_t& version, uint64_t& writerId, int& writerSlot, float* values, int count, std::string& presetName);
 
     // A slot counts as a live member if its owner was seen recently.
     static bool isAlive (const BusSlot&, uint64_t nowNs);

@@ -53,6 +53,8 @@ double rmsDb (const juce::AudioBuffer<float>& b, int from, int to)
 
 int main (int argc, char** argv)
 {
+    // Own shared-memory buses: never link into a host session that is running.
+    setenv ("AMX_BUS_NAMESPACE", "test", 1);
     juce::ScopedJuceInitialiser_GUI init;
     if (argc < 2)
     {
@@ -184,6 +186,54 @@ int main (int argc, char** argv)
                    "hand-tuned Range survives reload with Amount 100 %: " + findParam (*d, "Range")->getCurrentValueAsText());
             d->releaseResources();
         }
+    }
+
+    // Link: two fresh instances in one group share the linked settings; Weight
+    // stays per mic; with Link off a mic keeps its own values.
+    {
+        auto x = fm.createPluginInstance (*descs[0], sr, block, err);
+        auto y = fm.createPluginInstance (*descs[0], sr, block, err);
+        auto pump = [&]
+        {
+            for (int k = 0; k < 4; ++k)
+            {
+                juce::AudioBuffer<float> tmp (1, block);
+                tmp.clear();
+                x->processBlock (tmp, midi);
+                y->processBlock (tmp, midi);
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
+            }
+        };
+        for (auto* p : { x.get(), y.get() })
+        {
+            p->setPlayHead (&ph);
+            p->setPlayConfigDetails (1, 1, sr, block);
+            p->prepareToPlay (sr, block);
+            findParam (*p, "Group")->setValueNotifyingHost (findParam (*p, "Group")->getValueForText ("H"));
+        }
+        pump();
+
+        findParam (*x, "Range")->setValueNotifyingHost (findParam (*x, "Range")->getValueForText ("27.0"));
+        findParam (*x, "Weight")->setValueNotifyingHost (findParam (*x, "Weight")->getValueForText ("4.0"));
+        pump();
+        check (findParam (*y, "Range")->getCurrentValueAsText() == "27.0 dB",
+               "Link on: Range follows the other mic: " + findParam (*y, "Range")->getCurrentValueAsText());
+        check (findParam (*y, "Weight")->getCurrentValueAsText() == "0.0 dB",
+               "Link on: Weight stays per mic: " + findParam (*y, "Weight")->getCurrentValueAsText());
+
+        findParam (*y, "Link")->setValueNotifyingHost (0.0f);
+        pump();
+        findParam (*x, "Range")->setValueNotifyingHost (findParam (*x, "Range")->getValueForText ("10.0"));
+        pump();
+        check (findParam (*y, "Range")->getCurrentValueAsText() == "27.0 dB",
+               "Link off: mic keeps its own Range: " + findParam (*y, "Range")->getCurrentValueAsText());
+
+        findParam (*y, "Link")->setValueNotifyingHost (1.0f);
+        pump();
+        check (findParam (*y, "Range")->getCurrentValueAsText() == "10.0 dB",
+               "Link on again: mic takes the group's Range: " + findParam (*y, "Range")->getCurrentValueAsText());
+        x->releaseResources();
+        y->releaseResources();
     }
 
     for (auto* p : { a.get(), b.get(), c.get() })
