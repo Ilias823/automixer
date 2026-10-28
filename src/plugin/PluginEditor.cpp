@@ -40,7 +40,7 @@ void GroupMeters::paint (juce::Graphics& g)
     for (int i = 0; i < am::kMaxSlots && area.getHeight() >= rowH; ++i)
     {
         const auto& s = bus->slots[i];
-        if (! am::GroupBus::isActiveMember (s, now) && i != self)
+        if (i != self && (self < 0 || ! am::GroupBus::isOnSameTimeline (s, bus->slots[self], now, sameTimelineHops())))
             continue;
         ++liveCount;
 
@@ -365,7 +365,8 @@ void AutomixerEditor::timerCallback()
         for (int i = 0; i < am::kMaxSlots; ++i)
         {
             const auto& sl = bus->slots[i];
-            if (! am::GroupBus::isActiveMember (sl, now) && i != proc.currentSlot())
+            const int self = proc.currentSlot();
+            if (i != self && (self < 0 || ! am::GroupBus::isOnSameTimeline (sl, bus->slots[self], now, meters.sameTimelineHops())))
                 continue;
             sig << i << ':' << juce::roundToInt (sl.meterLevelDb.load()) << ':'
                 << juce::roundToInt (sl.meterGainDb.load() * 2.0f) << ':'

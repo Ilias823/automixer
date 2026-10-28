@@ -13,6 +13,9 @@ public:
     void paint (juce::Graphics&) override;
     int liveCount = 0;
 
+    // Peers more than ~1 s away on the timeline are not part of this mix.
+    int sameTimelineHops() const { return int (juce::jmax (8000.0, proc.getSampleRate()) / am::kHop); }
+
 private:
     AutomixerProcessor& proc;
 };

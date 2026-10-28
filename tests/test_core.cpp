@@ -219,6 +219,33 @@ int main()
         check (g0 > g50 && g50 > g100, "bleed mic drops further as Amount rises", g100);
     }
 
+    {
+        // A deleted-but-kept instance (Resolve keeps one for undo) runs at an
+        // unrelated position with silence: hidden from the group, and the
+        // live mics' gains are the same as without it.
+        auto bus = GroupBus::createPrivate();
+        AutomixChannel live, zombie;
+        live.prepare (kSr, kBlock, 1);
+        zombie.prepare (kSr, kBlock, 1);
+        const int ls = bus->claimSlot (1), zs = bus->claimSlot (2);
+        live.attach (bus->layout(), ls);
+        zombie.attach (bus->layout(), zs);
+        std::vector<float> x (a.begin(), a.begin() + kBlock * 100), silence (kBlock, 0.0f);
+        for (int blk = 0; blk < 100; ++blk)
+        {
+            float* p1 = x.data() + blk * kBlock;
+            live.process (&p1, 1, kBlock, 2000000 + int64_t (blk) * kBlock);
+            float* p2 = silence.data();
+            zombie.process (&p2, 1, kBlock, 9000000 + int64_t (blk) * kBlock);
+        }
+        const auto& L = bus->layout()->slots[ls];
+        const auto& Z = bus->layout()->slots[zs];
+        const uint64_t now = monotonicNs();
+        check (! GroupBus::isOnSameTimeline (Z, L, now, 3000), "kept-for-undo instance at another position is hidden", 0);
+        check (GroupBus::isOnSameTimeline (L, L, now, 3000), "a member on the same timeline is shown", 0);
+        check (live.currentGainDb() > -0.1f, "live mic unaffected by the hidden instance (dB)", live.currentGainDb());
+    }
+
     std::printf ("\n%s (%d failed)\n", failures == 0 ? "ALL PASSED" : "FAILURES", failures);
     return failures == 0 ? 0 : 1;
 }

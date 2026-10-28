@@ -102,6 +102,21 @@ public:
     // (Resolve does); those never publish a hop and are not shown or counted.
     static bool isActiveMember (const BusSlot& s, uint64_t nowNs) { return isAlive (s, nowNs) && s.latest.load() != 0; }
 
+    // An active member at the same timeline position as `self` (within
+    // maxHops). Resolve keeps a deleted plugin alive (for undo) and feeds it
+    // silence at an unrelated position: such instances fail this test. The
+    // gain sharing already ignores them, since they have no data for our hops.
+    static bool isOnSameTimeline (const BusSlot& peer, const BusSlot& self, uint64_t nowNs, int maxHops)
+    {
+        if (! isActiveMember (peer, nowNs))
+            return false;
+        const uint64_t own = self.latest.load();
+        if (own == 0)
+            return true; // we have no position yet: can't tell, show it
+        const int32_t diff = int32_t (entryTag (peer.latest.load()) - entryTag (own));
+        return diff > -maxHops && diff < maxHops;
+    }
+
 private:
     GroupBus() = default;
     BusLayout* mem = nullptr;
