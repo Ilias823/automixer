@@ -5,7 +5,7 @@ VST3    := $(BUILD)/Automixer_artefacts/$(CONFIG)/VST3/Automixer.vst3
 DEST    := $(HOME)/Library/Audio/Plug-Ins/VST3/Automixer.vst3
 BIN     := Contents/MacOS/Automixer
 
-.PHONY: all configure build test install uninstall clean
+.PHONY: all configure build test install install-system uninstall clean
 
 all: build
 
@@ -28,6 +28,15 @@ install: build
 	mkdir -p "$(dir $(DEST))"
 	cp -R $(VST3) "$(DEST)"
 	cmp "$(VST3)/$(BIN)" "$(DEST)/$(BIN)" && echo "Installed and verified: $(DEST)"
+	@echo "Restart DaVinci Resolve to load the new build."
+
+# Installs for all users in the folder Resolve scans by default (asks for your password).
+SYSDEST := /Library/Audio/Plug-Ins/VST3/Automixer.vst3
+install-system: build
+	sudo mkdir -p /Library/Audio/Plug-Ins/VST3
+	sudo rm -rf "$(SYSDEST)"
+	sudo cp -R $(VST3) "$(SYSDEST)"
+	cmp "$(VST3)/$(BIN)" "$(SYSDEST)/$(BIN)" && echo "Installed and verified: $(SYSDEST)"
 	@echo "Restart DaVinci Resolve to load the new build."
 
 uninstall:
