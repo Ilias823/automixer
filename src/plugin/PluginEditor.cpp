@@ -15,6 +15,42 @@ float dbToX (float db, float lo, float hi, juce::Rectangle<float> r)
 }
 } // namespace
 
+juce::Array<int> GroupMeters::visibleSlots() const
+{
+    juce::Array<int> out;
+    auto* bus = proc.currentBus();
+    const int self = proc.currentSlot();
+    if (bus == nullptr || self < 0)
+        return out;
+
+    const uint64_t now = am::monotonicNs();
+    const auto& me = bus->slots[self];
+    out.add (self);
+
+    auto isDefaultName = [] (const std::string& n)
+    {
+        return juce::String (n).matchesWildcard ("Audio *", true) && juce::String (n).fromFirstOccurrenceOf (" ", false, false).containsOnly ("0123456789");
+    };
+
+    for (int pass = 0; pass < 2; ++pass)
+        for (int i = 0; i < am::kMaxSlots; ++i)
+        {
+            if (out.contains (i))
+                continue;
+            const auto& s = bus->slots[i];
+            if (! am::GroupBus::isOnSameTimeline (s, me, now, sameTimelineHops()))
+                continue;
+            if ((pass == 0) == isDefaultName (am::GroupBus::getName (s)))
+                continue; // real names first, host defaults second
+            bool twin = false;
+            for (int j : out)
+                twin = twin || am::GroupBus::isTwin (bus->slots[j], s) || am::GroupBus::isTwin (s, bus->slots[j]);
+            if (! twin)
+                out.add (i);
+        }
+    return out;
+}
+
 void GroupMeters::paint (juce::Graphics& g)
 {
     g.setColour (kPanel);
@@ -33,15 +69,14 @@ void GroupMeters::paint (juce::Graphics& g)
         return;
     }
 
-    const uint64_t now = am::monotonicNs();
     const int rowH = 26;
     g.setFont (13.0f);
 
-    for (int i = 0; i < am::kMaxSlots && area.getHeight() >= rowH; ++i)
+    for (int i : visibleSlots())
     {
+        if (area.getHeight() < rowH)
+            break;
         const auto& s = bus->slots[i];
-        if (i != self && (self < 0 || ! am::GroupBus::isOnSameTimeline (s, bus->slots[self], now, sameTimelineHops())))
-            continue;
         ++liveCount;
 
         auto row = area.removeFromTop (rowH).toFloat();
@@ -361,13 +396,9 @@ void AutomixerEditor::timerCallback()
     juce::String sig;
     if (auto* bus = proc.currentBus())
     {
-        const uint64_t now = am::monotonicNs();
-        for (int i = 0; i < am::kMaxSlots; ++i)
+        for (int i : meters.visibleSlots())
         {
             const auto& sl = bus->slots[i];
-            const int self = proc.currentSlot();
-            if (i != self && (self < 0 || ! am::GroupBus::isOnSameTimeline (sl, bus->slots[self], now, meters.sameTimelineHops())))
-                continue;
             sig << i << ':' << juce::roundToInt (sl.meterLevelDb.load()) << ':'
                 << juce::roundToInt (sl.meterGainDb.load() * 2.0f) << ':'
                 << (am::entryDrive (sl.latest.load()) > 0.0f ? 1 : 0) << ':' << (int) sl.flags.load() << ';';

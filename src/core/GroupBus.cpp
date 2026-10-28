@@ -50,7 +50,7 @@ BusLayout* processLocalLayout (int group)
 BusLayout* mapShared (int group)
 {
     char name[32];
-    std::snprintf (name, sizeof (name), "/amx1.%d.g%d", int (getuid()), group);
+    std::snprintf (name, sizeof (name), "/amx2.%d.g%d", int (getuid()), group);
 
     int fd = shm_open (name, O_RDWR | O_CREAT, 0600);
     if (fd < 0)
@@ -154,6 +154,8 @@ int GroupBus::claimSlot (uint64_t instanceId)
             if (s.owner.compare_exchange_strong (cur, instanceId))
             {
                 for (auto& e : s.ring)
+                    e.store (0, std::memory_order_relaxed);
+                for (auto& e : s.power)
                     e.store (0, std::memory_order_relaxed);
                 s.latest.store (0);
                 s.meterLevelDb.store (-100.0f);

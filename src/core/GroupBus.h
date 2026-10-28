@@ -13,7 +13,9 @@
 // falls back to a process-local heap block, which still links instances that
 // are loaded in the same process.
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -26,7 +28,7 @@ constexpr int kMaxSlots = 16;
 constexpr int kHop = 16;               // samples per detector hop
 constexpr int kRingHops = 1 << 15;     // ~10.9 s of history at 48 kHz
 constexpr int kNameWords = 4;          // 32 chars of track name
-constexpr uint32_t kBusMagic = 0x414D5831; // "AMX1"
+constexpr uint32_t kBusMagic = 0x414D5832; // "AMX2"
 
 uint64_t monotonicNs();
 
@@ -39,7 +41,8 @@ struct BusSlot
     std::atomic<float> meterGainDb;     // applied gain, for the UI
     std::atomic<uint32_t> flags;        // bit 0: automix enabled
     std::atomic<uint64_t> name[kNameWords];
-    std::atomic<uint64_t> ring[kRingHops]; // packed (hop tag, drive)
+    std::atomic<uint64_t> ring[kRingHops];  // packed (hop tag, score)
+    std::atomic<uint64_t> power[kRingHops]; // packed (hop tag, raw signal power): finds twin instances
 };
 
 struct BusLayout
@@ -106,6 +109,36 @@ public:
     // maxHops). Resolve keeps a deleted plugin alive (for undo) and feeds it
     // silence at an unrelated position: such instances fail this test. The
     // gain sharing already ignores them, since they have no data for our hops.
+    // Hosts can run two instances on the same track (Resolve does): they see
+    // the same audio, so their raw power at a hop is identical. Two different
+    // microphones never match this closely.
+    static bool samePower (float a, float b) { return a > 1e-11f && b > 1e-11f && std::abs (a - b) <= 1e-4f * std::max (a, b); }
+    static bool powerAt (const BusSlot& s, int64_t hop, float& out)
+    {
+        const uint64_t e = s.power[hop & (kRingHops - 1)].load (std::memory_order_acquire);
+        if (entryTag (e) != hopTag (hop))
+            return false;
+        out = entryDrive (e);
+        return true;
+    }
+    // True when `b` carries the same audio as `a` (checked at a's newest hop).
+    static bool isTwin (const BusSlot& a, const BusSlot& b)
+    {
+        const uint64_t l = a.latest.load();
+        if (l == 0)
+            return false;
+        const int64_t hop = int64_t (entryTag (l)) - 1;
+        int matches = 0;
+        for (int k = 0; k < 4; ++k)
+        {
+            float pa, pb;
+            if (! powerAt (a, hop - k * 8, pa) || ! powerAt (b, hop - k * 8, pb) || ! samePower (pa, pb))
+                return false;
+            ++matches;
+        }
+        return matches == 4;
+    }
+
     static bool isOnSameTimeline (const BusSlot& peer, const BusSlot& self, uint64_t nowNs, int maxHops)
     {
         if (! isActiveMember (peer, nowNs))

@@ -13,6 +13,11 @@ public:
     void paint (juce::Graphics&) override;
     int liveCount = 0;
 
+    // The members to show: this one first, then every other source once
+    // (twin instances on the same track collapse into one row, preferring the
+    // one that has a real track name over a host default like "Audio 2").
+    juce::Array<int> visibleSlots() const;
+
     // Peers more than ~1 s away on the timeline are not part of this mix.
     int sameTimelineHops() const { return int (juce::jmax (8000.0, proc.getSampleRate()) / am::kHop); }
 

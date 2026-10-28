@@ -150,6 +150,7 @@ void AutomixChannel::publishHop (BusSlot& self, int64_t hop)
             v = -v;
     }
 
+    self.power[hop & (kRingHops - 1)].store (packEntry (hop, float (denv)), std::memory_order_release);
     const uint64_t e = packEntry (hop, v);
     self.ring[hop & (kRingHops - 1)].store (e, std::memory_order_release);
     self.latest.store (e, std::memory_order_release);
@@ -187,8 +188,18 @@ void AutomixChannel::computeGainHop (BusLayout* bus, int slot, int64_t hop)
         double own = 0.0, sum = 0.0;
         bool anyActive = false;
 
-        for (int j = 0; j < kMaxSlots; ++j)
+        // Count every source once: a peer whose raw power at this hop equals
+        // one already counted is a twin instance on the same track (Resolve
+        // runs two per effect slot). Self goes first, so our twin never
+        // competes with us.
+        float counted[kMaxSlots];
+        int numCounted = 0;
+
+        for (int k = -1; k < kMaxSlots; ++k)
         {
+            const int j = k < 0 ? slot : k;
+            if (k >= 0 && j == slot)
+                continue;
             const auto& peer = bus->slots[j];
             if (j != slot && (! GroupBus::isAlive (peer, now) || (peer.flags.load() & 1) == 0))
                 continue;
@@ -196,6 +207,17 @@ void AutomixChannel::computeGainHop (BusLayout* bus, int slot, int64_t hop)
             float v;
             if (! peerScore (peer, hop, v) || v == 0.0f)
                 continue;
+
+            float pw;
+            if (GroupBus::powerAt (peer, hop, pw))
+            {
+                bool twin = false;
+                for (int c = 0; c < numCounted && ! twin; ++c)
+                    twin = GroupBus::samePower (pw, counted[c]);
+                if (twin)
+                    continue;
+                counted[numCounted++] = pw;
+            }
 
             anyActive |= v > 0.0f;
             const double ds = std::pow ((double) std::fabs (v), s);

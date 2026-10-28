@@ -246,6 +246,20 @@ int main()
         check (live.currentGainDb() > -0.1f, "live mic unaffected by the hidden instance (dB)", live.currentGainDb());
     }
 
+    {
+        // Resolve runs two instances per effect slot, both fed the same track:
+        // a twin of mic A must not change anything (A open, B down), and the
+        // twin must be recognised as such.
+        std::vector<std::vector<float>> withTwin { a, b, a };
+        auto g = run (withTwin, 1.0, 2.4, p);
+        check (g[0] > -1.0 && g[2] > -1.0, "twin instances of the talker both stay open (dB)", std::min (g[0], g[2]));
+        check (g[1] < -17.0, "other mic still pulled down with a twin present (dB)", g[1]);
+        std::vector<std::vector<float>> withTwinB { a, b, b };
+        auto g2 = run (withTwinB, 5.4, 5.9, p);
+        check (g2[0] > -5.0 && g2[0] < -1.0 && g2[1] > -5.0 && g2[1] < -1.0,
+               "both talking with a twin of B: still ~-3 dB each, not -5", g2[0]);
+    }
+
     std::printf ("\n%s (%d failed)\n", failures == 0 ? "ALL PASSED" : "FAILURES", failures);
     return failures == 0 ? 0 : 1;
 }
