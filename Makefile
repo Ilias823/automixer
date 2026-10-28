@@ -15,7 +15,7 @@ $(BUILD)/CMakeCache.txt:
 configure: $(BUILD)/CMakeCache.txt
 
 build: configure
-	cmake --build $(BUILD) --config $(CONFIG) --target Automixer_VST3 automix_cli am_tests host_check bus_monitor
+	cmake --build $(BUILD) --config $(CONFIG) --target Automixer_VST3 automix_cli am_tests host_check bus_monitor sync_check
 	codesign --force --deep --sign - $(VST3)
 
 test: build

@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "Updater.h"
 
 namespace
 {
@@ -258,7 +259,23 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
 
     refreshPresetList();
 
-    setSize (660, 560);
+    versionLabel.setText ("Automixer " JucePlugin_VersionString, juce::dontSendNotification);
+    for (auto* l : { &versionLabel, &updateStatus })
+    {
+        l->setFont (juce::FontOptions (11.5f));
+        l->setColour (juce::Label::textColourId, kDim);
+        addAndMakeVisible (*l);
+    }
+    updateButton.onClick = [this]
+    {
+        if (downloadUrl.isNotEmpty())
+            juce::URL (downloadUrl).launchInDefaultBrowser();
+        else
+            checkForUpdates();
+    };
+    addAndMakeVisible (updateButton);
+
+    setSize (660, 590);
     startTimerHz (15);
 }
 
@@ -283,6 +300,40 @@ void AutomixerEditor::styleBar (juce::Slider& sl, const juce::String& paramId)
     sl.setVelocityBasedMode (false);
     if (auto* prm = dynamic_cast<juce::RangedAudioParameter*> (proc.params.getParameter (paramId)))
         sl.setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
+}
+
+void AutomixerEditor::checkForUpdates()
+{
+    updateButton.setEnabled (false);
+    updateStatus.setText ("Checking...", juce::dontSendNotification);
+
+    juce::Component::SafePointer<AutomixerEditor> safe (this);
+    juce::Thread::launch ([safe]
+    {
+        const auto info = am::fetchLatestRelease (am::kReleasesRepo);
+        juce::MessageManager::callAsync ([safe, info]
+        {
+            auto* self = safe.getComponent();
+            if (self == nullptr)
+                return;
+            self->updateButton.setEnabled (true);
+            if (! info.ok)
+            {
+                self->updateStatus.setText (info.error, juce::dontSendNotification);
+                return;
+            }
+            if (am::compareVersions (info.version, JucePlugin_VersionString) > 0)
+            {
+                self->downloadUrl = info.pkgUrl.isNotEmpty() ? info.pkgUrl : info.pageUrl;
+                self->updateStatus.setText ("Version " + info.version + " is available.", juce::dontSendNotification);
+                self->updateButton.setButtonText ("Download " + info.version);
+            }
+            else
+            {
+                self->updateStatus.setText ("You have the newest version.", juce::dontSendNotification);
+            }
+        });
+    });
 }
 
 void AutomixerEditor::refreshPresetList()
@@ -338,6 +389,14 @@ void AutomixerEditor::paint (juce::Graphics& g)
 void AutomixerEditor::resized()
 {
     auto r = getLocalBounds().reduced (16, 12);
+
+    auto bottom = r.removeFromBottom (24);
+    versionLabel.setBounds (bottom.removeFromLeft (120));
+    updateButton.setBounds (bottom.removeFromRight (150));
+    bottom.removeFromRight (8);
+    updateStatus.setBounds (bottom);
+    updateStatus.setJustificationType (juce::Justification::centredRight);
+    r.removeFromBottom (6);
 
     auto top = r.removeFromTop (26);
     top.removeFromLeft (140);

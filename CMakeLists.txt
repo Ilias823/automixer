@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.22)
+# Must come before project(): universal binaries (Apple Silicon + Intel).
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
 project(Automixer VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
-set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
 
 include(FetchContent)
 FetchContent_Declare(juce
@@ -35,7 +36,8 @@ juce_add_plugin(Automixer
 
 target_sources(Automixer PRIVATE
     src/plugin/PluginProcessor.cpp
-    src/plugin/PluginEditor.cpp)
+    src/plugin/PluginEditor.cpp
+    src/plugin/Updater.cpp)
 target_compile_definitions(Automixer PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -64,3 +66,10 @@ target_link_libraries(host_check PRIVATE juce::juce_audio_processors juce::juce_
 # Prints the live state of a group bus (debugging the link inside a host).
 add_executable(bus_monitor tools/bus_monitor.cpp)
 target_link_libraries(bus_monitor PRIVATE am_core)
+
+# Measures how two lav recordings line up (installed with the plugin).
+juce_add_console_app(sync_check PRODUCT_NAME "automixer-sync-check")
+target_sources(sync_check PRIVATE tools/sync_check.cpp)
+target_compile_definitions(sync_check PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_link_libraries(sync_check PRIVATE juce::juce_audio_formats juce::juce_dsp juce::juce_core
+    juce::juce_recommended_config_flags)

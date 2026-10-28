@@ -3,3 +3,5 @@ build/
 automix_out/
 .DS_Store
 listen/
+dist/
+installer/build/

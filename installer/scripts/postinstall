@@ -1,0 +1,10 @@
+#!/bin/sh
+# Removes a per-user development copy of the plugin, so Resolve does not load
+# two Automixers (one from ~/Library and the one just installed for all users).
+user="$(stat -f%Su /dev/console)"
+home="$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+old="$home/Library/Audio/Plug-Ins/VST3/Automixer.vst3"
+if [ -n "$home" ] && [ -d "$old" ]; then
+    rm -rf "$old"
+fi
+exit 0

@@ -73,6 +73,12 @@ private:
     juce::Array<AutomixerProcessor::PresetInfo> presets;
     bool saving = false;
 
+    // Version and "Check for Updates".
+    juce::Label versionLabel, updateStatus;
+    juce::TextButton updateButton { "Check for Updates" };
+    juce::String downloadUrl;
+    void checkForUpdates();
+
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> groupAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> automixAttachment, linkAttachment;
 
