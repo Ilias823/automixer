@@ -138,9 +138,9 @@ int main()
         // Latency: an impulse comes out exactly latencySamples() later.
         AutomixChannel c;
         c.prepare (kSr, kBlock, 1);
-        std::vector<float> x (size_t (kBlock * 4), 0.0f);
+        std::vector<float> x (size_t (kBlock * 8), 0.0f);
         x[10] = 1.0f;
-        for (int blk = 0; blk < 4; ++blk)
+        for (int blk = 0; blk < 8; ++blk)
         {
             float* ptr = x.data() + blk * kBlock;
             c.process (&ptr, 1, kBlock, blk * kBlock);
@@ -150,6 +150,47 @@ int main()
             if (std::fabs (x[i]) > 0.5f)
                 at = int (i);
         check (at == 10 + c.latencySamples(), "impulse delayed by reported latency (samples)", at);
+    }
+
+    {
+        // Position glitches like Resolve's render (one block repeats its old
+        // position, the next is correct again) must not change the output.
+        // A real seek must still be accepted.
+        auto runPositions = [&] (bool glitch)
+        {
+            auto bus = GroupBus::createPrivate();
+            AutomixChannel c;
+            c.prepare (kSr, kBlock, 1);
+            c.attach (bus->layout(), bus->claimSlot (7));
+            std::vector<float> x (a.begin(), a.begin() + kBlock * 200);
+            for (int blk = 0; blk < 200; ++blk)
+            {
+                int64_t pos = 1000000 + int64_t (blk) * kBlock;
+                if (glitch && blk % 17 == 5)
+                    pos -= kBlock; // stale position, audio continues
+                if (glitch && blk % 23 == 9)
+                    pos += 2 * kBlock; // early position
+                float* ptr = x.data() + blk * kBlock;
+                c.process (&ptr, 1, kBlock, pos);
+            }
+            return x;
+        };
+        auto clean = runPositions (false), glitched = runPositions (true);
+        double maxDiff = 0;
+        for (size_t i = 0; i < clean.size(); ++i)
+            maxDiff = std::max (maxDiff, (double) std::fabs (clean[i] - glitched[i]));
+        check (maxDiff < 1e-6, "one-block position glitches leave audio unchanged (max diff)", maxDiff);
+
+        AutomixChannel c;
+        c.prepare (kSr, kBlock, 1);
+        std::vector<float> y (size_t (kBlock * 4), 0.5f);
+        float* p0 = y.data();
+        c.process (&p0, 1, kBlock, 0);
+        float* p1 = y.data() + kBlock;
+        c.process (&p1, 1, kBlock, 500000);          // seek...
+        float* p2 = y.data() + 2 * kBlock;
+        c.process (&p2, 1, kBlock, 500000 + kBlock); // ...confirmed
+        check (! c.positionWasContinuous(), "a confirmed seek is accepted", 0);
     }
 
     std::printf ("\n%s (%d failed)\n", failures == 0 ? "ALL PASSED" : "FAILURES", failures);

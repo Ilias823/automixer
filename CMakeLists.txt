@@ -60,3 +60,7 @@ target_sources(host_check PRIVATE tools/host_check.cpp)
 target_compile_definitions(host_check PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(host_check PRIVATE juce::juce_audio_processors juce::juce_events
     juce::juce_recommended_config_flags)
+
+# Prints the live state of a group bus (debugging the link inside a host).
+add_executable(bus_monitor tools/bus_monitor.cpp)
+target_link_libraries(bus_monitor PRIVATE am_core)

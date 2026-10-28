@@ -38,6 +38,7 @@ struct ChannelParams
 class AutomixChannel
 {
 public:
+    static constexpr int kPeerSlackBlocks = 3;
     static constexpr double kDecisionAttackMs = 3.0;
     static constexpr double kDecisionReleaseMs = 20.0;
     static constexpr double kFloorSmoothMs = 100.0;
@@ -116,6 +117,8 @@ private:
     int writeIndex = 0;
 
     int64_t expectedPos = INT64_MIN;
+    int64_t pendingNext = 0;
+    bool pendingJump = false;
     bool continuous = true;
 
     std::atomic<uintptr_t> attachment { 0 }; // BusLayout* | (slot + 1)

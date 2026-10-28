@@ -45,6 +45,7 @@ private:
     juce::ToggleButton automix { "Automix" };
     juce::TextEditor name;
     GroupMeters meters;
+    juce::String meterSignature;
     std::array<Knob, 7> knobs;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> groupAttachment;

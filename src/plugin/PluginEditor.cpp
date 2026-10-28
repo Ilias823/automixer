@@ -40,7 +40,7 @@ void GroupMeters::paint (juce::Graphics& g)
     for (int i = 0; i < am::kMaxSlots && area.getHeight() >= rowH; ++i)
     {
         const auto& s = bus->slots[i];
-        if (! am::GroupBus::isAlive (s, now))
+        if (! am::GroupBus::isActiveMember (s, now) && i != self)
             continue;
         ++liveCount;
 
@@ -131,18 +131,29 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
     for (size_t i = 0; i < knobs.size(); ++i)
     {
         auto& k = knobs[i];
-        k.slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        k.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 18);
+        // Horizontal bars: drag left/right anywhere on the bar (the value moves
+        // by the distance dragged, it never jumps to the click), double-click
+        // to reset. Easier in a host window than knobs.
+        k.slider.setSliderStyle (juce::Slider::LinearBar);
+        k.slider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 0, 0);
+        k.slider.setColour (juce::Slider::trackColourId, kAccent.withAlpha (0.55f));
+        k.slider.setColour (juce::Slider::backgroundColourId, kPanel);
+        k.slider.setColour (juce::Slider::textBoxTextColourId, kText);
+        k.slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        k.slider.setSliderSnapsToMousePosition (false); // relative drag, no jump on click
+        k.slider.setVelocityBasedMode (false);
+        if (auto* prm = dynamic_cast<juce::RangedAudioParameter*> (proc.params.getParameter (ids[i].first)))
+            k.slider.setDoubleClickReturnValue (true, prm->convertFrom0to1 (prm->getDefaultValue()));
         k.label.setText (ids[i].second, juce::dontSendNotification);
-        k.label.setJustificationType (juce::Justification::centred);
+        k.label.setJustificationType (juce::Justification::centredLeft);
         k.label.setColour (juce::Label::textColourId, kDim);
         addAndMakeVisible (k.slider);
         addAndMakeVisible (k.label);
         k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.params, ids[i].first, k.slider);
     }
 
-    setSize (600, 400);
-    startTimerHz (20);
+    setSize (600, 470);
+    startTimerHz (15);
 }
 
 AutomixerEditor::~AutomixerEditor()
@@ -176,21 +187,46 @@ void AutomixerEditor::resized()
     status.setBounds (r.removeFromTop (18));
     r.removeFromTop (4);
 
-    auto knobRow = r.removeFromBottom (112);
+    // Controls: two columns of labelled bars under the meters.
+    const int rowH = 30, rows = ((int) knobs.size() + 1) / 2;
+    auto controls = r.removeFromBottom (rows * rowH);
+    r.removeFromBottom (8);
     meters.setBounds (r.reduced (0, 4));
 
-    const int w = knobRow.getWidth() / (int) knobs.size();
-    for (auto& k : knobs)
+    const int colW = (controls.getWidth() - 16) / 2;
+    for (size_t i = 0; i < knobs.size(); ++i)
     {
-        auto c = knobRow.removeFromLeft (w);
-        k.label.setBounds (c.removeFromTop (18));
-        k.slider.setBounds (c);
+        const int col = int (i) / rows, row = int (i) % rows;
+        juce::Rectangle<int> cell (controls.getX() + col * (colW + 16), controls.getY() + row * rowH, colW, rowH);
+        cell = cell.reduced (0, 3);
+        knobs[i].label.setBounds (cell.removeFromLeft (86));
+        knobs[i].slider.setBounds (cell);
     }
 }
 
 void AutomixerEditor::timerCallback()
 {
-    meters.repaint();
+    // Repaint the meters only when something visible changed (cheap check),
+    // so the window stays responsive inside the host.
+    juce::String sig;
+    if (auto* bus = proc.currentBus())
+    {
+        const uint64_t now = am::monotonicNs();
+        for (int i = 0; i < am::kMaxSlots; ++i)
+        {
+            const auto& sl = bus->slots[i];
+            if (! am::GroupBus::isActiveMember (sl, now) && i != proc.currentSlot())
+                continue;
+            sig << i << ':' << juce::roundToInt (sl.meterLevelDb.load()) << ':'
+                << juce::roundToInt (sl.meterGainDb.load() * 2.0f) << ':'
+                << (am::entryDrive (sl.latest.load()) > 0.0f ? 1 : 0) << ':' << (int) sl.flags.load() << ';';
+        }
+    }
+    if (sig != meterSignature)
+    {
+        meterSignature = sig;
+        meters.repaint();
+    }
 
     juce::String s;
     if (proc.currentBus() == nullptr)
@@ -204,7 +240,8 @@ void AutomixerEditor::timerCallback()
     if (! proc.hostGivesPosition())
         s << "  |  host gives no timeline position";
     s << "  |  latency " << juce::String (1000.0 * proc.getLatencySamples() / juce::jmax (1.0, proc.getSampleRate()), 1) << " ms";
-    status.setText (s, juce::dontSendNotification);
+    if (s != status.getText())
+        status.setText (s, juce::dontSendNotification);
 
     if (! name.hasKeyboardFocus (true) && name.getText() != proc.getUserName())
         name.setText (proc.getUserName(), false);

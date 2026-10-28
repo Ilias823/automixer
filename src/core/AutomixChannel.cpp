@@ -46,9 +46,10 @@ void AutomixChannel::prepare (double sampleRate, int maxBlockSize, int numChanne
     numCh = std::max (1, numChannels);
 
     lookahead = int (std::ceil (sr * params.lookaheadMs * 0.001 / kHop)) * kHop;
-    // One full host block plus one hop of slack, so peers are always done with
-    // the positions we read, plus the lookahead that lets a mic open early.
-    latency = std::max (maxBlockSize, kHop) + kHop + lookahead;
+    // Several host blocks plus one hop of slack, so peers are always done with
+    // the positions we read (Resolve runs tracks up to ~2 blocks apart), plus
+    // the lookahead that lets a mic open early. Resolve compensates for it.
+    latency = kPeerSlackBlocks * std::max (maxBlockSize, kHop) + kHop + lookahead;
 
     hp.setHighPass (sr, 100.0);
     lp.setLowPass (sr, 4000.0);
@@ -75,6 +76,7 @@ void AutomixChannel::prepare (double sampleRate, int maxBlockSize, int numChanne
     gainFrom = gainTo = 1.0f;
     holdLeft = 0;
     expectedPos = INT64_MIN;
+    pendingJump = false;
 
     setParams (params);
 }
@@ -241,9 +243,29 @@ void AutomixChannel::process (float* const* io, int channels, int n, int64_t pos
     const int slot = int (a & 63) - 1;
     BusSlot* self = (bus != nullptr && slot >= 0) ? &bus->slots[slot] : nullptr;
 
-    continuous = pos == expectedPos;
-    if (! continuous && expectedPos != INT64_MIN)
-        resetForJump();
+    // Hosts sometimes report a stale or early position for a single block
+    // while the audio itself is continuous (Resolve does during renders).
+    // Treat a mismatch as a glitch and keep counting; accept a jump only when
+    // the next block confirms it, then clear the delay line.
+    continuous = expectedPos == INT64_MIN || pos == expectedPos;
+    if (! continuous)
+    {
+        if (pendingJump && pos == pendingNext)
+        {
+            resetForJump();
+            pendingJump = false;
+        }
+        else
+        {
+            pendingJump = true;
+            pendingNext = pos + n;
+            pos = expectedPos;
+        }
+    }
+    else
+    {
+        pendingJump = false;
+    }
     expectedPos = pos + n;
 
     if (self != nullptr)

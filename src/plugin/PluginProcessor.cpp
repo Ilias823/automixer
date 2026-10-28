@@ -116,13 +116,23 @@ void AutomixerProcessor::runChannel (juce::AudioBuffer<float>& buffer, bool bypa
 
     int64_t pos = fallbackPos;
     bool fromHost = false;
+    int playing = -1;
     if (auto* ph = getPlayHead())
         if (auto info = ph->getPosition())
+        {
+            playing = info->getIsPlaying() ? 1 : 0;
             if (auto t = info->getTimeInSamples())
             {
                 pos = *t;
                 fromHost = true;
             }
+        }
+    if (posLogOn.load (std::memory_order_relaxed))
+    {
+        const uint32_t w = posWrite.load (std::memory_order_relaxed);
+        posLog[w % posLog.size()] = { pos, buffer.getNumSamples(), playing };
+        posWrite.store (w + 1, std::memory_order_release);
+    }
     hasHostPosition.store (fromHost);
     fallbackPos = pos + buffer.getNumSamples();
 
@@ -144,6 +154,21 @@ void AutomixerProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer,
 void AutomixerProcessor::timerCallback()
 {
     syncMembership();
+
+    static const juce::File flag ("/tmp/amx_poslog");
+    posLogOn.store (flag.exists());
+    const uint32_t w = posWrite.load (std::memory_order_acquire);
+    if (w != posRead)
+    {
+        juce::File out ("/tmp/amx_pos_" + juce::File::createLegalFileName (displayName()) + ".txt");
+        juce::String text;
+        for (; posRead != w; ++posRead)
+        {
+            const auto& e = posLog[posRead % posLog.size()];
+            text << juce::String (e.pos) << " " << e.n << " " << e.playing << "\n";
+        }
+        out.appendText (text);
+    }
 }
 
 void AutomixerProcessor::syncMembership()

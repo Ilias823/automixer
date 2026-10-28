@@ -68,6 +68,14 @@ private:
     juce::String hostTrackName; // message thread only
 
     std::atomic<bool> hasHostPosition { true };
+
+    // Debug: when /tmp/amx_poslog exists, block positions are logged and the
+    // timer writes them to /tmp/amx_pos_<name>.txt.
+    struct PosEntry { int64_t pos; int n; int playing; };
+    std::array<PosEntry, 8192> posLog {};
+    std::atomic<uint32_t> posWrite { 0 };
+    uint32_t posRead = 0;
+    std::atomic<bool> posLogOn { false };
     int64_t fallbackPos = 0;
 
     std::atomic<float>* pGroup = nullptr;

@@ -98,6 +98,10 @@ public:
     // A slot counts as a live member if its owner was seen recently.
     static bool isAlive (const BusSlot&, uint64_t nowNs);
 
+    // Live and has processed audio. Hosts can keep extra idle instances alive
+    // (Resolve does); those never publish a hop and are not shown or counted.
+    static bool isActiveMember (const BusSlot& s, uint64_t nowNs) { return isAlive (s, nowNs) && s.latest.load() != 0; }
+
 private:
     GroupBus() = default;
     BusLayout* mem = nullptr;
