@@ -2,9 +2,21 @@
 
 A gain-sharing automixer VST3 for DaVinci Resolve (Fairlight) on macOS. Put one instance on each mic track. Every instance with the same **Group** links up with the others: the person talking stays open, the other mics drop by up to **Range**, and when people talk at the same time they share the gain.
 
-Closed source, all rights reserved (see LICENSE). Universal (Apple Silicon and Intel), macOS 12+.
+Free and open source. If it saves you time, you can support its development on **[Ko-fi](https://ko-fi.com/ilias823)**.
 
-## Build and install
+Universal (Apple Silicon and Intel), macOS 12+. Unlike other automixers, every setting is saved with the Resolve project.
+
+## Install
+
+1. Download `Automixer-<version>.dmg` (or the `.pkg`) from the [latest release](https://github.com/Ilias823/automixer/releases/latest).
+2. Open it and run **Install Automixer.pkg**. The installer isn't signed by Apple: if macOS blocks it, right-click it and choose **Open**, or allow it in System Settings → Privacy & Security.
+3. Restart DaVinci Resolve. In Fairlight, add **Automixer** to each mic track and give them the same Group.
+
+To remove it, run `/Library/Application Support/Automixer/uninstall.sh`.
+
+## Build from source
+
+Needs Xcode and CMake (`brew install cmake`); JUCE is downloaded by CMake.
 
 ```
 make test                  # build, run core tests and the VST3 host check
@@ -15,7 +27,7 @@ Restart Resolve after installing. The .pkg installs into `/Library/Audio/Plug-In
 
 ## Releases and updates
 
-The source lives in the private repository. Installers are published in the public, releases-only repository `Ilias823/automixer-releases`, which the plugin's **Check for Updates** button reads (only when pressed).
+Installers (.pkg and .dmg) are published as GitHub releases of this repository, which the plugin's **Check for Updates** button reads (only when pressed; nothing is sent otherwise).
 
 1. Raise the version in `CMakeLists.txt` (`project(Automixer VERSION x.y.z)`).
 2. Commit and push.
@@ -49,3 +61,9 @@ The plugin adds a fixed latency (about three host blocks + 20 ms, ~52 ms in Reso
 build/automix_cli_artefacts/Release/automix_cli host.wav guest.wav --start 120 --dur 60 --out out/
 ```
 Writes the processed mics, `mix_raw.wav` and `mix_am.wav`, and `gains.csv`.
+
+## Support and licence
+
+Automixer is free and open source, licensed under the [GNU General Public License v3.0](LICENSE). It is built with [JUCE](https://juce.com), used under its AGPLv3 licence, and the VST3 SDK (MIT). If it saves you time, you can [support it on Ko-fi](https://ko-fi.com/ilias823). The plugin's **Support on Ko-fi** button and the installer's last page link there too; nothing pops up on its own.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.

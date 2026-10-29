@@ -20,3 +20,6 @@ Uninstall
 
 Support
   If Automixer saves you time: https://ko-fi.com/ilias823
+
+Licence
+Free and open source under the GNU GPL v3: https://github.com/Ilias823/automixer

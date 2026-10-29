@@ -274,6 +274,9 @@ AutomixerEditor::AutomixerEditor (AutomixerProcessor& p)
             checkForUpdates();
     };
     addAndMakeVisible (updateButton);
+    // Opens the page only when pressed; never shown as a pop-up.
+    donateButton.onClick = [] { juce::URL ("https://ko-fi.com/ilias823").launchInDefaultBrowser(); };
+    addAndMakeVisible (donateButton);
 
     setSize (660, 590);
     startTimerHz (15);
@@ -393,6 +396,8 @@ void AutomixerEditor::resized()
     auto bottom = r.removeFromBottom (24);
     versionLabel.setBounds (bottom.removeFromLeft (120));
     updateButton.setBounds (bottom.removeFromRight (150));
+    bottom.removeFromRight (8);
+    donateButton.setBounds (bottom.removeFromRight (130));
     bottom.removeFromRight (8);
     updateStatus.setBounds (bottom);
     updateStatus.setJustificationType (juce::Justification::centredRight);

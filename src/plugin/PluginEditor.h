@@ -73,8 +73,9 @@ private:
     juce::Array<AutomixerProcessor::PresetInfo> presets;
     bool saving = false;
 
-    // Version and "Check for Updates".
+    // Version, "Support on Ko-fi" and "Check for Updates".
     juce::Label versionLabel, updateStatus;
+    juce::TextButton donateButton { "Support on Ko-fi" };
     juce::TextButton updateButton { "Check for Updates" };
     juce::String downloadUrl;
     void checkForUpdates();

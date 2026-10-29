@@ -1,7 +1,7 @@
 #pragma once
 
 // "Check for Updates": asks GitHub for the newest release of the public
-// releases repository. Runs only when the user presses the button; nothing is
+// repository. Runs only when the user presses the button; nothing is
 // sent anywhere otherwise.
 
 #include <juce_core/juce_core.h>
@@ -9,7 +9,7 @@
 namespace am
 {
 
-constexpr const char* kReleasesRepo = "Ilias823/automixer-releases";
+constexpr const char* kReleasesRepo = "Ilias823/automixer";
 
 struct ReleaseInfo
 {
